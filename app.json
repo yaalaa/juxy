@@ -1,0 +1,7 @@
+{
+  "name": "Juxy",
+  "description": "Juxy botwork",
+  "image": "heroku/python",
+  "keywords": ["python", "django", "db" ],
+  "addons": [ "heroku-postgresql" ]
+}

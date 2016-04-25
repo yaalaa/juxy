@@ -1,0 +1,12 @@
+dj-database-url==0.4.0
+gunicorn==19.4.5
+psycopg2==2.6.1
+whitenoise==2.0.6
+Django==1.9.5
+djangorestframework==3.3.3
+requests==2.9.1
+simplejson==3.8.2
+django-after-response==0.2.2
+regex==2016.4.15
+wit==3.4.0
+pytz==2016.4
