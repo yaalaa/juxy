@@ -6,11 +6,6 @@ import os
 from wit import Wit
 
 
-# access token
-_SERVER_TOKEN = os.environ["WIT_TOKEN"]
-assert _SERVER_TOKEN, "No WIT_TOKEN set"
-
-
 def firstEntityValue(entities, entity):
     if entity not in entities:
         return None
@@ -29,7 +24,7 @@ def _mergeDefault(session_id, context, entities, msg):
     return new_context
 
 
-def processText(text, sessionId, funcs=None, context=None):
+def processText(token, text, sessionId, funcs=None, context=None):
     out = []
     
     def say(session_id, context, msg):
@@ -46,7 +41,7 @@ def processText(text, sessionId, funcs=None, context=None):
     if "merge" not in actions:
         actions["merge"] = _mergeDefault
     
-    client = Wit(_SERVER_TOKEN, actions)
+    client = Wit(token, actions)
     
     inCtx = context if context else {}
     

@@ -16,10 +16,25 @@ import requests
 import after_response
 import regex
 
-import juxy.cacheutils as cacheutils
-import aiwitutils
+from cacheutils import cacheutils
+from aiengines import aiwitutils
+from weatherengines import openweathermaputils
 
 
+# wit access token
+_WIT_TOKEN = os.environ["WIT_TOKEN"]
+assert _WIT_TOKEN, "No WIT_TOKEN set"
+# openweathermap access token
+_OPENWEATHERMAP_TOKEN = os.environ["OPENWEATHERMAP_TOKEN"]
+assert _OPENWEATHERMAP_TOKEN, "No OPENWEATHERMAP_TOKEN is set"
+# openweathermap language
+_OPENWEATHERMAP_LANG = os.environ.get("OPENWEATHERMAP_LANG", "")
+# openweathermap units
+_OPENWEATHERMAP_UNITS = os.environ.get("OPENWEATHERMAP_UNITS", "")
+# openweathermap home city ID
+_OPENWEATHERMAP_HOME_CITY_ID = os.environ["OPENWEATHERMAP_CITY_ID"]
+assert _OPENWEATHERMAP_HOME_CITY_ID, "No OPENWEATHERMAP_CITY_ID is set"
+# slack verify token
 _SLACK_TOKEN_VERIFY = os.environ["SLACK_TOKEN_VERIFY"]
 assert _SLACK_TOKEN_VERIFY, "No SLACK_TOKEN_VERIFY is set"
 
@@ -28,6 +43,27 @@ _CONTEXT_CACHE_KEY_PREFIX = "context_"
 # context cache timeout, seconds
 _CONTEXT_CACHE_TIMEOUT = 10 * 24 * 60 * 60
 
+
+# intent suffix
+_INTENT_SUFFIX = "_intent"
+# current weather intent 
+_INTENT_WEATHER_CURRENT = "weather_cur_intent"
+# tomorrow weather intent 
+_INTENT_WEATHER_TOMORROW = "weather_tmw_intent"
+# current weather description context key
+_CONTEXT_WEATHER_CURRENT_DESC = "weather_cur_desc"
+# current weather temperature context key
+_CONTEXT_WEATHER_CURRENT_TEMP = "weather_cur_temp"
+# tomorrow weather description context key
+_CONTEXT_WEATHER_TOMORROW_DESC = "weather_tmw_desc"
+# tomorrow weather temperature context key
+_CONTEXT_WEATHER_TOMORROW_TEMP = "weather_tmw_temp"
+
+# intent map
+_INTENT_MAP = {
+    _INTENT_WEATHER_CURRENT: [_CONTEXT_WEATHER_CURRENT_DESC, _CONTEXT_WEATHER_CURRENT_TEMP],
+    _INTENT_WEATHER_TOMORROW: [_CONTEXT_WEATHER_TOMORROW_DESC, _CONTEXT_WEATHER_TOMORROW_TEMP],
+}
 
 # calculates session ID 
 def _calcSessionId(data):
@@ -40,7 +76,87 @@ def _merge(session_id, context, entities, msg):
     
     new_context = dict(context)
     
+    # intents
+    foundIntent = None
+    for entity in entities.keys():
+        if entity.endswith(_INTENT_SUFFIX): # intent
+            foundIntent = entity
+            break
+            
+    if foundIntent:
+        for key in new_context.keys():
+            if key.endswith(_INTENT_SUFFIX): # intent
+                new_context.pop(key, None)
+
+        for _, deps in _INTENT_MAP.iteritems():
+            if deps:
+                for dep in deps:
+                    new_context.pop(dep, None)
+                
+        new_context[foundIntent] = " "
+
+    print("_merge: output context:")
+    print(new_context)
+    
     return new_context
+
+
+# fecthes current weather in home city
+def _fetchWeatherCurrentHome(sessionId, context):
+    out = dict(context)
+
+    ok = False
+    try:
+        while True:
+            repData = openweathermaputils.getCurrent(token = _OPENWEATHERMAP_TOKEN, cityId = _OPENWEATHERMAP_HOME_CITY_ID, lang = _OPENWEATHERMAP_LANG, units = _OPENWEATHERMAP_UNITS)
+            if not repData:
+                break
+        
+            (desc, temp) = openweathermaputils.getCurrentSummary(repData)
+            
+            out[_CONTEXT_WEATHER_CURRENT_DESC] = desc
+            out[_CONTEXT_WEATHER_CURRENT_TEMP] = temp
+            ok = True
+            break
+    except:
+        print("_fetchWeatherCurrentHome: failed")
+        traceback.print_exc()
+        ok = False
+    
+    if not ok:
+        out.pop(_CONTEXT_WEATHER_CURRENT_DESC, None)
+        out.pop(_CONTEXT_WEATHER_CURRENT_TEMP, None)
+    
+    return out
+
+
+# fecthes tomorrow weather in home city
+def _fetchWeatherTomorrowHome(sessionId, context):
+    out = dict(context)
+
+    ok = False
+    try:
+        while True:
+            repData = openweathermaputils.getForecastTomorrow(token = _OPENWEATHERMAP_TOKEN, cityId = _OPENWEATHERMAP_HOME_CITY_ID, lang = _OPENWEATHERMAP_LANG, units = _OPENWEATHERMAP_UNITS)
+            if not repData:
+                break
+        
+            (desc, temp) = openweathermaputils.getForecastDailySummary(repData)
+            
+            out[_CONTEXT_WEATHER_TOMORROW_DESC] = desc
+            out[_CONTEXT_WEATHER_TOMORROW_TEMP] = temp
+            ok = True
+            break
+    except:
+        print("_fetchWeatherTomorrowHome: failed")
+        traceback.print_exc()
+        ok = False
+    
+    if not ok:
+        out.pop(_CONTEXT_WEATHER_TOMORROW_DESC, None)
+        out.pop(_CONTEXT_WEATHER_TOMORROW_TEMP, None)
+    
+    return out
 
 
 def _processText(text, data):
@@ -59,9 +175,11 @@ def _processText(text, data):
 
     funcs = {
         "merge": _merge,
+        "fetch-weather-cur-home": _fetchWeatherCurrentHome,
+        "fetch-weather-tmw-home": _fetchWeatherTomorrowHome,
     }
     
-    (answers, outerCtx) = aiwitutils.processText(utterance, sessionId, funcs=funcs, context=ctx)
+    (answers, outerCtx) = aiwitutils.processText(_WIT_TOKEN, utterance, sessionId, funcs=funcs, context=ctx)
     print(u"q[{q}]\na[{a}]".format(q = utterance, a = "\n".join(answers)))
     
     if outerCtx:
