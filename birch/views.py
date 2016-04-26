@@ -16,6 +16,8 @@ import requests
 import after_response
 import regex
 
+import xml.etree.ElementTree as ET
+
 from cacheutils import cacheutils
 from aiengines import aiwitutils
 from weatherengines import openweathermaputils
@@ -37,6 +39,10 @@ assert _OPENWEATHERMAP_HOME_CITY_ID, "No OPENWEATHERMAP_CITY_ID is set"
 # slack verify token
 _SLACK_TOKEN_VERIFY = os.environ["SLACK_TOKEN_VERIFY"]
 assert _SLACK_TOKEN_VERIFY, "No SLACK_TOKEN_VERIFY is set"
+# currency URL
+_CURRENCY_URL = os.environ.get("CURRENCY_URL", "")
+# currency XPath
+_CURRENCY_XPATH = os.environ.get("CURRENCY_XPATH", "")
 
 # context cache key prefix
 _CONTEXT_CACHE_KEY_PREFIX = "context_"
@@ -50,6 +56,8 @@ _INTENT_SUFFIX = "_intent"
 _INTENT_WEATHER_CURRENT = "weather_cur_intent"
 # tomorrow weather intent 
 _INTENT_WEATHER_TOMORROW = "weather_tmw_intent"
+# currency rate intent 
+_INTENT_CURRENCY_RATE = "currency_rate_intent"
 # current weather description context key
 _CONTEXT_WEATHER_CURRENT_DESC = "weather_cur_desc"
 # current weather temperature context key
@@ -58,11 +66,14 @@ _CONTEXT_WEATHER_CURRENT_TEMP = "weather_cur_temp"
 _CONTEXT_WEATHER_TOMORROW_DESC = "weather_tmw_desc"
 # tomorrow weather temperature context key
 _CONTEXT_WEATHER_TOMORROW_TEMP = "weather_tmw_temp"
+# currency rate context key
+_CONTEXT_CURRENCY_RATE = "currency_rate"
 
 # intent map
 _INTENT_MAP = {
     _INTENT_WEATHER_CURRENT: [_CONTEXT_WEATHER_CURRENT_DESC, _CONTEXT_WEATHER_CURRENT_TEMP],
     _INTENT_WEATHER_TOMORROW: [_CONTEXT_WEATHER_TOMORROW_DESC, _CONTEXT_WEATHER_TOMORROW_TEMP],
+    _INTENT_CURRENCY_RATE: [_CONTEXT_CURRENCY_RATE],
 }
 
 # calculates session ID 
@@ -159,6 +170,37 @@ def _fetchWeatherTomorrowHome(sessionId, context):
     return out
 
 
+# fecthes currency rate
+def _fetchCurrencyRate(sessionId, context):
+    out = dict(context)
+
+    ok = False
+    try:
+        while True:
+            if not _CURRENCY_URL or not _CURRENCY_XPATH:
+                print("_fetchCurrencyRate: no url or xpath")
+                break
+        
+            resp = requests.get(_CURRENCY_URL)
+            xml = respx = ET.fromstring(resp.content)
+            item = xml.find(_CURRENCY_XPATH)
+            
+            rate = item.text
+        
+            out[_CONTEXT_CURRENCY_RATE] = rate
+            ok = True
+            break
+    except:
+        print("_fetchCurrencyRate: failed")
+        traceback.print_exc()
+        ok = False
+    
+    if not ok:
+        out.pop(_CONTEXT_CURRENCY_RATE, None)
+    
+    return out
+
+
 def _processText(text, data):
     match = regex.search(r"^\s*\w+\s*[.,:!\s]\s*(?P<utterance>\S.*)\s*$", text)
     if not match:
@@ -177,6 +219,7 @@ def _processText(text, data):
         "merge": _merge,
         "fetch-weather-cur-home": _fetchWeatherCurrentHome,
         "fetch-weather-tmw-home": _fetchWeatherTomorrowHome,
+        "fetch-currency-rate": _fetchCurrencyRate,
     }
     
     (answers, outerCtx) = aiwitutils.processText(_WIT_TOKEN, utterance, sessionId, funcs=funcs, context=ctx)
